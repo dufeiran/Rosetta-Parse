@@ -1,0 +1,74 @@
+# Q/GDW 376.2 AFN=0x0C 请求实时数据
+# 同一个 AFN 在不同方向、不同 DA/DT 下表示不同含义。本例展示典型的"组查询/查询响应"对，
+# 以及（占位）组设置/设置响应（实际 AFN=0x0C 无设置语义，仅给出框架）。
+#
+# 数据域结构（376.2 通用）：
+#   DA(2) + DT(2) + 内容...
+#   DA = Pn 数据点（DA1 高字节为 8 点组号，DA2 低字节为位掩码）
+#   DT = Fn 数据元素（DT1 + DT2 同上）
+#
+# 这里以 Pn=p1, Fn=F1 (终端日冻结正向有功电能示数) 为例。
+
+service:
+  protocol: gw3762
+  service_code: 0x0C
+  display_name: "请求实时数据"
+
+# 方向区分：主站发起=PRM:1，终端响应=PRM:0
+variant_selector:
+  rules:
+    - when: { dir: 0, prm: 1 }
+      variant: get_request
+    - when: { dir: 1, prm: 0 }
+      variant: get_response
+
+frames:
+  get_request:
+    description: "组查询帧 — 主站请求实时数据"
+    fields:
+      - name: da
+        type: bytes
+        length: 2
+        default: "0101"
+        description: "数据点标识 Pn（DA1 高字节=组号；DA2 低字节=点位掩码）"
+        bit_fields:
+          - { name: da2, bits: "7-0",  description: "组内位掩码（DA2）" }
+          - { name: da1, bits: "15-8", description: "组号（DA1，0=p0 公共，1..n=分组）" }
+      - name: dt
+        type: bytes
+        length: 2
+        default: "0100"
+        description: "数据元素标识 Fn（DT1 高字节=组号；DT2 低字节=位掩码）"
+        bit_fields:
+          - { name: dt2, bits: "7-0",  description: "组内位掩码（DT2）" }
+          - { name: dt1, bits: "15-8", description: "组号（DT1）" }
+
+  get_response:
+    description: "查询结果响应帧 / 主动上报帧"
+    fields:
+      - name: da
+        type: bytes
+        length: 2
+        default: "0101"
+        bit_fields:
+          - { name: da2, bits: "7-0" }
+          - { name: da1, bits: "15-8" }
+      - name: dt
+        type: bytes
+        length: 2
+        default: "0100"
+        bit_fields:
+          - { name: dt2, bits: "7-0" }
+          - { name: dt1, bits: "15-8" }
+      - name: energy
+        type: bcd_le
+        length: 5
+        default: "0000000000"
+        bcd_digits: 10
+        description: "正向有功电能示数，BCD 小端 5 字节，单位 0.01 kWh（示数 = 解析 int / 100）"
+
+  # 设置类变体对 AFN=0x0C 实际无意义；保留为不启用
+  set_request:
+    enabled: false
+  set_response:
+    enabled: false

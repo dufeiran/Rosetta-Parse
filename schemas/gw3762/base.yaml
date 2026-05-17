@@ -1,0 +1,136 @@
+# 国网 Q/GDW 376.2 协议基础帧（最外层骨架）
+# 当用户传入报文且没有匹配的功能码 yaml 时，使用这个 base.yaml 解析出最外层字段，
+# 数据域(data)以裸 bytes 形式返回，不再深入解析。
+#
+# 帧格式：
+#   68H | L1L2 | L1L2 | 68H | C | A(5) | AFN | SEQ | DATA | CS | 16H
+# 长度域：16 位 LE 重复两次，低 14 位为长度，覆盖 C..DATA。
+# 校验：单字节模 256 累加和，覆盖 C..DATA。
+
+protocol:
+  name: gw3762
+  display_name: "Q/GDW 376.2"
+  description: "电力用户用电信息采集系统通信协议——主站与采集终端"
+
+identifier:
+  start_byte: 0x68
+  rules:
+    - check: byte_at_offset
+      offset: 5
+      value: 0x68                # 第二个 0x68 起始符在偏移 5
+    - check: length_field_layout
+      expect: dl_l_dl_l_pattern   # bytes[1..3] == bytes[3..5]
+    - check: ends_with_byte
+      value: 0x16
+
+frames:
+  base:
+    description: "376.2 外层骨架"
+    fields:
+      - name: start1
+        type: marker
+        length: 1
+        default: "68"
+        role: marker
+
+      - name: length1
+        type: uint16_le
+        length: 2
+        default: "0000"
+        role: length
+        auto: true
+        algorithm: length_le
+        range: { start: control, end: data }      # 覆盖 C..DATA
+        transform:
+          mask: 0x3FFF
+          reserved_bits: 0x0000
+
+      - name: length2
+        type: uint16_le
+        length: 2
+        default: "0000"
+        role: length
+        auto: true
+        algorithm: copy_field
+        source: length1
+
+      - name: start2
+        type: marker
+        length: 1
+        default: "68"
+        role: marker
+
+      - name: control
+        type: uint8
+        length: 1
+        default: "4B"
+        role: control
+        description: "帧控制：DIR/PRM/FCB-ACD/FCV-DFC/功能码"
+        bit_fields:
+          - { name: dir,      bits: "7"  , description: "0=主站→终端, 1=终端→主站" }
+          - { name: prm,      bits: "6"  , description: "1=启动站(请求方)" }
+          - { name: fcb_acd,  bits: "5"  , description: "帧计数位/访问请求" }
+          - { name: fcv_dfc,  bits: "4"  , description: "帧计数有效/数据流控" }
+          - { name: function, bits: "3-0", description: "链路功能：B=用户数据，9=请求" }
+
+      - name: address
+        type: bytes
+        length: 5
+        default: "3201000100"
+        role: address
+        description: "终端地址 A1A2A3A4A5（A1A2 BCD 行政区划，A3A4 终端地址，A5 高字节）"
+
+      - name: afn
+        type: uint8
+        length: 1
+        default: "00"
+        role: service
+        description: "应用功能码 AFN"
+        values:
+          0x00: "确认 / 否认"
+          0x01: "复位命令"
+          0x02: "链路接口检测"
+          0x04: "设置参数"
+          0x05: "控制命令"
+          0x06: "身份认证"
+          0x0A: "请求任务数据"
+          0x0C: "请求实时数据"
+          0x0D: "请求历史数据"
+          0x0E: "请求事件"
+          0x0F: "文件传输"
+          0x10: "数据转发"
+
+      - name: seq
+        type: uint8
+        length: 1
+        default: "60"
+        role: seq
+        description: "帧序号 TPV/FIR/FIN/CON/PSEQ"
+        bit_fields:
+          - { name: tpv,  bits: "7"  , description: "时间标签存在位" }
+          - { name: fir,  bits: "6"  , description: "首帧标志" }
+          - { name: fin,  bits: "5"  , description: "末帧标志" }
+          - { name: con,  bits: "4"  , description: "需要确认" }
+          - { name: pseq, bits: "3-0", description: "帧序号" }
+
+      - name: data
+        type: bytes
+        length: variable
+        default: ""
+        role: payload
+        description: "应用数据域（功能码 yaml 进一步解析）"
+
+      - name: cs
+        type: uint8
+        length: 1
+        default: "00"
+        role: checksum
+        auto: true
+        algorithm: sum_mod_256
+        range: { start: control, end: data }
+
+      - name: end
+        type: marker
+        length: 1
+        default: "16"
+        role: marker

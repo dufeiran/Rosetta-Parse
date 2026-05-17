@@ -1,0 +1,49 @@
+# DL/T 698.45 服务码 0x05 = GET-Request-Normal（组查询帧）
+# 主站发送，请求读取一个对象属性。
+#
+# 注意：698 中请求/响应使用不同 service-choice 字节（0x05 请求 / 0x85 响应），
+# 因此请求与响应分别使用独立 yaml 文件。本文件仅启用 get_request 变体。
+
+service:
+  protocol: dlt698
+  service_code: 0x05
+  display_name: "GET-Request-Normal"
+  description: "读取单个 OAD 对应的属性值"
+
+frames:
+  get_request:
+    description: "组查询帧 — 主站请求"
+    fields:
+      - name: service_choice
+        type: uint8
+        length: 1
+        default: "05"
+        description: "Service-Choice = 0x05"
+      - name: get_request_choice
+        type: uint8
+        length: 1
+        default: "01"
+        description: "GET-Request 子类型：1=Normal, 2=Next, 3=BlockTransferWithList, ..."
+      - name: piid
+        type: uint8
+        length: 1
+        default: "00"
+        description: "Priority + Invoke-ID（高 2 位优先级，低 6 位调用号）"
+      - name: oad
+        type: axdr_oad
+        length: 4
+        default: "40000200"
+        description: "对象属性描述符：OI(2 BE) + AttrIdx(1) + AttrQualifier(1)。0x4000-2-0 = 电能量当前值"
+      - name: time_tag_choice
+        type: uint8
+        length: 1
+        default: "00"
+        description: "0=无时间标签；非零时后接 date_time_s(7B)"
+
+  # 其余变体在 698 GET 请求方向无意义
+  get_response:
+    enabled: false
+  set_request:
+    enabled: false
+  set_response:
+    enabled: false

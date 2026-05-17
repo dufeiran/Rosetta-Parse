@@ -1,0 +1,114 @@
+# DL/T 698.45 协议基础帧（最外层骨架）
+# 当用户传入报文且没有匹配的功能码 yaml 时，使用这个 base.yaml 解析出最外层字段，
+# 数据域(apdu)以裸 bytes 形式返回，不再深入解析。
+#
+# 帧格式：
+#   68H | L1L2 | C | A(变长，此处用固定 8 字节) | HCS(CRC16) | APDU | FCS(CRC16) | 16H
+# 长度域：16 位小端，低 14 位为帧总长度（含起止字节），高 2 位保留。
+# 校验：CRC16/X.25 (FCS-16)，HCS 校验 [length..address]，FCS 校验 [length..apdu]。
+
+protocol:
+  name: dlt698
+  display_name: "DL/T 698.45"
+  description: "面向对象的用电信息数据交换协议（698）"
+
+identifier:
+  start_byte: 0x68
+  rules:
+    - check: ends_with_byte
+      value: 0x16
+    - check: total_length_matches_buffer
+      length_field_offset: 1
+      length_field_size: 2
+      mask: 0x3FFF
+
+frames:
+  base:
+    description: "698 外层骨架"
+    fields:
+      - name: start
+        type: marker
+        length: 1
+        default: "68"
+        role: marker
+
+      - name: length
+        type: uint16_le
+        length: 2
+        default: "0000"
+        role: length
+        auto: true
+        algorithm: length_bits14_le
+        range: { start: start, end: end }       # 含起止 68/16，整帧长度
+        transform:
+          mask: 0x3FFF
+          reserved_bits: 0x0000
+
+      - name: control
+        type: uint8
+        length: 1
+        default: "43"
+        role: control
+        description: "帧控制：DIR/PRM/分帧/功能码"
+        bit_fields:
+          - { name: dir,           bits: "7"  , description: "0=client→server, 1=server→client" }
+          - { name: prm,           bits: "6"  , description: "1=primary 主站发起" }
+          - { name: division,      bits: "5"  , description: "分帧标志" }
+          - { name: sleep,         bits: "4"  , description: "唤醒位" }
+          - { name: function_code, bits: "3-0", description: "链路功能：3=用户数据" }
+
+      # 698 SA 实际为变长（首字节低 4 位 = 地址字节数-1，再跟逻辑地址，最后 1 字节服务地址）。
+      # 此处简化拆为三段：1B 前缀 + 6B BCD 逻辑地址 + 1B SA 服务端口（共 8B）。
+      # 如需变长，可改为自定义 address_dlt698 codec 解析前缀里的 addr_len_m1。
+      - name: addr_prefix
+        type: uint8
+        length: 1
+        default: "05"
+        role: address
+        description: "地址前缀字节"
+        bit_fields:
+          - { name: addr_type,   bits: "7-6", description: "0=单点 1=通配 2=组 3=广播" }
+          - { name: addr_len_m1, bits: "3-0", description: "逻辑地址字节数-1（默认 5 → 6 字节）" }
+
+      - name: addr_body
+        type: bytes
+        length: 6
+        default: "000000000001"
+        description: "逻辑地址（一般为 BCD）"
+
+      - name: addr_sa
+        type: uint8
+        length: 1
+        default: "00"
+        description: "服务地址 SA / 端口"
+
+      - name: hcs
+        type: uint16_le
+        length: 2
+        default: "0000"
+        role: checksum
+        auto: true
+        algorithm: crc16_x25
+        range: { start: length, end: addr_sa }  # 不含 hcs 自身
+
+      - name: apdu
+        type: bytes
+        length: variable                        # 由 length 字段反推
+        default: ""
+        role: payload
+        description: "应用数据域（功能码 yaml 进一步解析）"
+
+      - name: fcs
+        type: uint16_le
+        length: 2
+        default: "0000"
+        role: checksum
+        auto: true
+        algorithm: crc16_x25
+        range: { start: length, end: apdu }     # 不含 fcs 自身
+
+      - name: end
+        type: marker
+        length: 1
+        default: "16"
+        role: marker

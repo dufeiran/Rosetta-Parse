@@ -1,0 +1,69 @@
+# Q/GDW 376.2 AFN=0x04 设置参数
+# 完整展示 4 种帧的典型例子：以 DA=0/DT=F3 (设置主站 IP 与端口) 为例。
+#
+# 用法说明：
+#   - 主站设置主站 IP 端口（组设置帧）→ 终端回设置结果（设置响应帧）
+#   - 主站查询当前主站 IP 端口（组查询帧）→ 终端回当前值（查询响应帧）
+
+service:
+  protocol: gw3762
+  service_code: 0x04
+  display_name: "设置参数 - F3 主站 IP/端口"
+
+variant_selector:
+  # AFN=0x04 在主从方向以及 F3 内容上区分；这里粗略以 PRM/DIR 区分请求和响应。
+  # 主站发起且数据域包含 IP+端口 → set_request；只有 DA/DT → get_request。
+  # 严格实现需根据数据域长度推断，本示例仅展示框架。
+  rules:
+    - when: { dir: 0, prm: 1 }
+      variant: set_request
+    - when: { dir: 1, prm: 0 }
+      variant: set_response
+
+frames:
+  # 1) 组设置帧（主站 → 终端）：写入新的主站 IP 与端口
+  set_request:
+    description: "组设置帧 — 主站下发新的主站 IP/端口"
+    fields:
+      - { name: da, type: bytes, length: 2, default: "0000",
+          bit_fields: [ { name: da2, bits: "7-0" }, { name: da1, bits: "15-8" } ],
+          description: "DA：0 表示全局参数（终端级）" }
+      - { name: dt, type: bytes, length: 2, default: "0400",
+          bit_fields: [ { name: dt2, bits: "7-0" }, { name: dt1, bits: "15-8" } ],
+          description: "DT：DT1=4 第 4 组参数（IP 与端口位于 F19/F20 等），简化示例" }
+      - { name: master_ip, type: bytes, length: 4, default: "0A0A0164",
+          description: "主站 IPv4，4 字节（如 10.10.1.100）" }
+      - { name: master_port, type: uint16_le, length: 2, default: "1A0A",
+          description: "主站端口（默认 0x0A1A = 2586）" }
+
+  # 2) 设置结果响应帧（终端 → 主站）：返回设置结果
+  set_response:
+    description: "设置结果响应帧 — 返回成功/失败"
+    fields:
+      - { name: da, type: bytes, length: 2, default: "0000",
+          bit_fields: [ { name: da2, bits: "7-0" }, { name: da1, bits: "15-8" } ] }
+      - { name: dt, type: bytes, length: 2, default: "0400",
+          bit_fields: [ { name: dt2, bits: "7-0" }, { name: dt1, bits: "15-8" } ] }
+      - { name: result, type: uint8, length: 1, default: "00",
+          description: "0x00=成功, 0x01=失败",
+          values: { 0x00: "OK", 0x01: "FAIL" } }
+
+  # 3) 组查询帧（主站 → 终端）：查询当前主站 IP/端口
+  get_request:
+    description: "组查询帧 — 主站查询当前主站 IP/端口"
+    fields:
+      - { name: da, type: bytes, length: 2, default: "0000",
+          bit_fields: [ { name: da2, bits: "7-0" }, { name: da1, bits: "15-8" } ] }
+      - { name: dt, type: bytes, length: 2, default: "0400",
+          bit_fields: [ { name: dt2, bits: "7-0" }, { name: dt1, bits: "15-8" } ] }
+
+  # 4) 查询结果响应帧 / 主动上报帧（终端 → 主站）：返回当前主站 IP/端口
+  get_response:
+    description: "查询结果响应帧 — 返回当前主站 IP/端口"
+    fields:
+      - { name: da, type: bytes, length: 2, default: "0000",
+          bit_fields: [ { name: da2, bits: "7-0" }, { name: da1, bits: "15-8" } ] }
+      - { name: dt, type: bytes, length: 2, default: "0400",
+          bit_fields: [ { name: dt2, bits: "7-0" }, { name: dt1, bits: "15-8" } ] }
+      - { name: master_ip, type: bytes, length: 4, default: "0A0A0164" }
+      - { name: master_port, type: uint16_le, length: 2, default: "1A0A" }

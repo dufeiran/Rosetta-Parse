@@ -1,0 +1,60 @@
+# DL/T 698.45 服务码 0x85 = GET-Response-Normal（查询结果响应帧）
+# 终端响应主站的 GET-Request；本文件仅启用 get_response 变体。
+
+service:
+  protocol: dlt698
+  service_code: 0x85
+  display_name: "GET-Response-Normal"
+  description: "返回单个 OAD 对应的属性值"
+
+frames:
+  get_response:
+    description: "查询结果响应帧 / 主动上报帧 — 终端响应"
+    fields:
+      - name: service_choice
+        type: uint8
+        length: 1
+        default: "85"
+        description: "Service-Choice = 0x85"
+      - name: get_response_choice
+        type: uint8
+        length: 1
+        default: "01"
+        description: "GET-Response 子类型：1=Normal, 2=Next, 3=BlockTransfer, ..."
+      - name: piid_acd
+        type: uint8
+        length: 1
+        default: "00"
+        description: "ACD(bit7) + Invoke-ID(bit5-0)"
+        bit_fields:
+          - { name: acd,  bits: "7"  , description: "Access Demand: 1=有事件" }
+          - { name: piid, bits: "5-0", description: "回应的 Invoke-ID" }
+      - name: oad
+        type: axdr_oad
+        length: 4
+        default: "40000200"
+        description: "本次返回的对象属性描述符"
+      - name: data_result_choice
+        type: uint8
+        length: 1
+        default: "00"
+        description: "0=Data(后跟 typed_data) / 1=DataAccessResult(后跟 1B 错误码)"
+      - name: data
+        type: axdr_typed_data
+        length: variable
+        default: "12 00 00"
+        description: |
+          A-XDR 编码值：tag + (可选长度) + value
+          示例 12 00 00 = long_unsigned(tag=0x12) 值为 0x0000
+      - name: time_tag_choice
+        type: uint8
+        length: 1
+        default: "00"
+        description: "0=无时间标签；非零时后接 date_time_s(7B)"
+
+  get_request:
+    enabled: false
+  set_request:
+    enabled: false
+  set_response:
+    enabled: false
